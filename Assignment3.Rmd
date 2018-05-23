@@ -1,0 +1,351 @@
+---
+title: "Assignment3"
+author: "RF"
+date: "3/6/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Multivariate linear models
+
+In this assignment you will investigate the relation between different aspects of IQ and symptom severity in ASD (as measured by ADOS). The assignment is meant to make you practice on linear models, multiple predictors and interactions.
+
+The data you will use is the outcome of the psychological testing of the children you analyzed in methods 3.
+Data: https://www.dropbox.com/s/hom2qnmp9hyfwmu/Assignment3Data.csv?dl=0
+The data consists of ChildID, gender, age, diagnosis (ASD), symptom severity (ADOS), several aspects of IQ (NonVerbal/Perceptual,Verbal,Social) and the visit at which the tests were administered. The questions should be answered by focusing on visit 1.
+
+The questions you will have to answer are:
+
+1. Assess the relation between symptom severity and IQ (focus on visit 1 and children with ASD) and report the model, a plot of the model, a couple of lines describing the quality of the model and interpreting the results. P.S. Should you scale? P.P.S. Don't forget to motivate your priors. P.P.P.S. At least one plot for results and a plot for quality of each model (here and in the next questions) would be appreciated.
+1.1. Verbal IQ and ADOS
+1.2. Non Verbal IQ and ADOS
+1.3. Social IQ and ADOS
+
+```{r}
+setwd("/home/tnoncs/Bayesian_autism")
+data=read.csv("Assignment3Data.csv")
+
+library(dplyr)
+visit1=data[data$Visit==1,]
+visit1=visit1[visit1$ADOS!=15,]
+
+# sum(visit1$Gender==1) # 61 # based on portfolio1 in methods 3, 1 indicates males, 2 indicates females
+# females=visit1[visit1$Gender==2,] # 11
+asd1=data %>% subset(ASD==1) %>% subset(Visit==1) # 34
+# td=visit1[visit1$ASD==0,] # 38
+# asd_fem=asd1[asd1$Gender==2,] # 5
+# asd_male=asd1[asd1$Gender==1,] # 29
+# edad=mean(visit1$AgeMonths, na.rm = TRUE) # 26 months
+# edad_std=sd(visit1$AgeMonths, na.rm = TRUE) # 7
+# edad_asd=mean(asd1$AgeMonths, na.rm = TRUE) # 32 months
+# td1=data %>% subset(ASD==0) %>% subset(Visit==1)
+# edad_td=mean(td1$AgeMonths, na.rm = TRUE) # 20
+# td_fem=td1[td1$Gender==2,] # 6
+# td_male=td1[td1$Gender==1,] # 32
+
+str(asd1)
+asd1$VerbalIQ.s <- (asd1$VerbalIQ - mean(asd1$VerbalIQ))/ sd(asd1$VerbalIQ)
+asd1$NonVerbalIQ.s <- (asd1$NonVerbalIQ - mean(asd1$NonVerbalIQ))/ sd(asd1$NonVerbalIQ)
+asd1$SocialIQ.s <- (asd1$SocialIQ - mean(asd1$SocialIQ)) / sd(asd1$SocialIQ)
+asd1=asd1[asd1$ADOS!=0,]
+
+mean(asd1$ADOS) # 14.27273
+sd(asd1$ADOS) # 4.009931
+
+library(rethinking)
+m1 <- map(
+  alist(
+    ADOS ~ dnorm(mu, sigma),
+    mu <- a + b*VerbalIQ.s,
+    a ~ dnorm(14, 1),
+    b ~ dnorm(0, 0.5),
+    sigma ~ dunif(0, 6)
+  ),
+  data=asd1)
+precis(m1)
+precis=precis(m1, corr = TRUE)
+try=precis@output
+
+m2 <- map(
+  alist(
+    ADOS ~ dnorm(mu, sigma),
+    mu <- a + b*NonVerbalIQ.s,
+    a ~ dnorm(14, 1),
+    b ~ dnorm(0, 0.5),
+    sigma ~ dunif(0, 6)
+  ),
+  data=asd1)
+precis(m2)
+prec2=precis(m2, corr = TRUE)
+save=prec2@output
+precis_plot(precis(m2))
+
+m3 <- map(
+  alist(
+    ADOS ~ dnorm(mu, sigma),
+    mu <- a + b*SocialIQ.s,
+    a ~ dnorm( 14, 1),
+    b ~ dnorm(0, 0.5),
+    sigma ~ dunif(0, 6)
+  ),
+  data=asd1)
+precis(m3)
+precis_plot(precis(m3))
+kismacska=precis(m3, corr = TRUE)
+mau=kismacska@output
+```
+
+```{r plots}
+#1
+verbaliq.seq <- seq( from=-3 , to=3 , by=1)
+mu <- link( m1 , data=data.frame(VerbalIQ.s=verbaliq.seq) )
+str(mu)
+# summarize the distribution of mu
+mu.mean <- apply( mu , 2 , mean )
+mu.HPDI <- apply( mu , 2 , HPDI , prob=0.89 )
+
+sim.ados <- sim( m1 , data=list(VerbalIQ.s=verbaliq.seq) )
+str(sim.ados)
+ados.PI <- apply( sim.ados , 2 , PI , prob=0.89 )
+
+plot( ADOS ~ VerbalIQ.s , asd1 , col=col.alpha(rangi2,0.5) )
+# draw MAP line
+lines( verbaliq.seq , mu.mean )
+# draw HPDI region for line
+shade( mu.HPDI , verbaliq.seq )
+# draw PI region for simulated heights
+shade( ados.PI , verbaliq.seq )
+
+# 2
+nonverbal.seq <- seq( from=-3 , to=3 , by=1 )
+mu <- link( m2 , data=data.frame(NonVerbalIQ.s=nonverbal.seq) )
+str(mu)
+mu.mean <- apply( mu , 2 , mean )
+mu.HPDI <- apply( mu , 2 , HPDI , prob=0.89 )
+
+sim.ados <- sim( m2 , data=list(NonVerbalIQ.s=nonverbal.seq) )
+str(sim.ados)
+ados.PI <- apply( sim.ados , 2 , PI , prob=0.89 )
+
+plot( ADOS ~ NonVerbalIQ.s , asd1 , col=col.alpha(rangi2,0.5))
+lines( nonverbal.seq , mu.mean )
+shade( mu.HPDI , nonverbal.seq )
+shade( ados.PI , nonverbal.seq )
+
+# 3
+social.seq <- seq( from=-3 , to=3 , by=1 )
+mu <- link( m3 , data=data.frame(SocialIQ.s=social.seq) )
+str(mu)
+mu.mean <- apply( mu , 2 , mean )
+mu.HPDI <- apply( mu , 2 , HPDI , prob=0.89 )
+
+sim.ados <- sim( m3 , data=list(SocialIQ.s=social.seq) )
+str(sim.ados)
+ados.PI <- apply( sim.ados , 2 , PI , prob=0.89 )
+
+plot( ADOS ~ SocialIQ.s , asd1 , col=col.alpha(rangi2,0.5))
+lines( social.seq , mu.mean)
+shade( mu.HPDI , social.seq)
+shade( ados.PI , social.seq)
+
+```
+
+2. Do the different aspects of IQ account for different portions of the variance in ADOS? 
+2.1. Does it make sense to have all IQ measures in the same model? First write a few lines answering the question and motivating your answer, including a discussion as to what happens when you put all of them in the same model. Then build a model following your answer. If your answer is "no", you are not free, you still have to answer: are there alternative ways of answering the question?
+2.2. Build the model, assess its quality, write a few lines interpreting the results.
+
+```{r IQ correlation check}
+
+# verbal + nonverbal
+viq_niq <- map(
+  alist(
+    VerbalIQ.s ~ dnorm( mu , sigma ) ,
+    mu <- a + b*NonVerbalIQ.s,
+    a ~ dnorm( 0 , 1) ,
+    b ~ dnorm( 0 , 1) ,
+    sigma ~ dunif( 0 , 2)
+  ) , data = asd1)
+
+precis(viq_niq)
+precis_plot(precis(viq_niq))
+
+# verbal + social
+viq_siq <- map(
+  alist(
+    VerbalIQ.s ~ dnorm( mu , sigma ) ,
+    mu <- a + b*SocialIQ.s,
+    a ~ dnorm( 0 , 1) ,
+    b ~ dnorm( 0 , 1) ,
+    sigma ~ dunif( 0 , 2)
+  ) , data = asd1)
+precis(viq_siq)
+precis_plot(precis(viq_siq))
+
+# nonverbal + social
+niq_siq <- map(
+  alist(
+    NonVerbalIQ.s ~ dnorm( mu , sigma ) ,
+    mu <- a + b*SocialIQ.s,
+    a ~ dnorm( 0 , 1) ,
+    b ~ dnorm( 0 , 1) ,
+    sigma ~ dunif( 0 , 2)
+  ) , data = asd1)
+
+precis(niq_siq)
+precis_plot(precis(niq_siq))
+
+```
+
+```{r model with all IQS}
+
+library(rethinking)
+pairs( ~VerbalIQ.s + NonVerbalIQ.s + SocialIQ.s,
+data=asd1 , col=rangi2 )
+
+iqs <- map(
+  alist(
+    ADOS ~ dnorm( mu , sigma ) ,
+    mu <- a + bv * VerbalIQ.s + bn* NonVerbalIQ.s + bs* SocialIQ.s ,
+    a ~ dnorm(14 , 1),
+    bv ~ dnorm(0, 1),
+    bn ~ dnorm(0, 1),
+    bs ~ dnorm(0, 1),
+    sigma ~ dunif(0, 6)
+  ) , data = asd1)
+
+precis(iqs, corr=T)
+precis_plot(precis(iqs))
+```
+
+```{r predictive posterior check (PPC) plot}
+
+library(rethinking)
+samples_all = extract.samples( iqs , n=1e4 ) #model all has all the iqs as predictors
+
+prediction <- sim( iqs , data=asd1, n= 1e4, post=samples_all )
+
+library(bayesplot)
+ppc_dens_overlay(asd1$ADOS, prediction[1:150, ])
+#150 probable predictive posteriors, dark line is the data
+
+```
+
+
+```{r posterior prediction plot - not used}
+
+# call link without specifying new data
+# so it uses original data
+mu <- link(iqs )
+# summarize samples across cases
+mu.mean <- apply( mu , 2 , mean )
+mu.PI <- apply( mu , 2 , PI )
+# simulate observations
+# again no new data, so uses original data
+ados.sim <- sim( iqs , n=1e4 )
+ados.PI <- apply( ados.sim , 2 , PI )
+
+plot( mu.mean ~ asd1$ADOS , col=rangi2 , ylim=range(mu.PI) ,
+xlab="Observed ados" , ylab="Predicted ados" )
+abline( a=0 , b=1 , lty=2 )
+for ( i in 1:nrow(d) )
+lines( rep(asd1$ADOS[i],2) , c(mu.PI[1,i],mu.PI[2,i]) ,
+col=rangi2 )
+
+```
+
+3. Let's now include also the TD children. Does it make sense to ask whether IQ and ADOS are related? Motivate your answer. In any case, if you wanted to build a model to answer that question, which model would you build? Run the model, assess its quality, write a few lines interpreting the results.
+
+```{r}
+
+visit1=na.omit(visit1)
+# standardize IQs
+visit1$VerbalIQ.s <- (visit1$VerbalIQ - mean(visit1$VerbalIQ))/ sd(visit1$VerbalIQ)
+visit1$NonVerbalIQ.s <- (visit1$NonVerbalIQ - mean(visit1$NonVerbalIQ))/ sd(visit1$NonVerbalIQ)
+visit1$SocialIQ.s <- (visit1$SocialIQ - mean(visit1$SocialIQ)) / sd(visit1$SocialIQ)
+```
+
+```{r}
+
+library(rethinking)
+# mean(visit1$ADOS)
+
+td_asd <- map(
+  alist(
+    ADOS ~ dnorm( mu , sigma ) ,
+    mu <- a + bv * VerbalIQ.s + bn* NonVerbalIQ.s + bs* SocialIQ.s + ba* ASD,
+    a ~ dnorm( 7 , 3 ) ,
+    bv ~ dnorm( 0 , 0.6 ) ,
+    bn ~ dnorm(0, 0.6),
+    bs ~ dnorm(0,0.6),
+    ba ~ dnorm(0, 4),
+    sigma ~ dunif( 0 , 10)
+  ) , data = visit1)
+
+precis(td_asd, corr=T)
+precis_plot(precis(td_asd))
+```
+
+
+```{r PPC plot}
+
+library(rethinking)
+samples_all = extract.samples( td_asd , n=1e4 )
+
+prediction <- sim( td_asd , data=visit1, n= 1e4, post=samples_all )
+
+library(bayesplot)
+ppc_dens_overlay(visit1$ADOS, prediction[1:150, ])
+```
+
+4. Let's discuss contents:
+4.1. You have three scores for IQ, do they show shared variance? Is that the same in TD and ASD? What does that tell us about IQ?
+
+```{r}
+
+# verbal + nonverbal
+viq_niq <- map(
+  alist(
+    VerbalIQ.s ~ dnorm( mu , sigma ) ,
+    mu <- a + b*NonVerbalIQ.s,
+    a ~ dnorm( 0 , 1) ,
+    b ~ dnorm( 0 , 1) ,
+    sigma ~ dunif( 0 , 2)
+  ) , data = td)
+
+precis(viq_niq)
+precis_plot(precis(viq_niq))
+
+# verbal + social
+viq_siq <- map(
+  alist(
+    VerbalIQ.s ~ dnorm( mu , sigma ) ,
+    mu <- a + b*SocialIQ.s,
+    a ~ dnorm( 0 , 1) ,
+    b ~ dnorm( 0 , 1) ,
+    sigma ~ dunif( 0 , 2)
+  ) , data = td)
+precis(viq_siq)
+precis_plot(precis(viq_siq))
+
+# nonverbal + social
+niq_siq <- map(
+  alist(
+    NonVerbalIQ.s ~ dnorm( mu , sigma ) ,
+    mu <- a + b*SocialIQ.s,
+    a ~ dnorm( 0 , 1) ,
+    b ~ dnorm( 0 , 1) ,
+    sigma ~ dunif( 0 , 2)
+  ) , data = td)
+
+precis(niq_siq)
+precis_plot(precis(niq_siq))
+```
+
+4.2. You have explored the relation between IQ and ADOS. How do you explain that relation from a cognitive perspective? N.B. You can present alternative hypotheses.
+
+5. Bonus questions: Including measurement errors. 
+5.1. Let's assume that ADOS has a measurement error of 1. How would you model that in any of the previous models? 
+5.2. We know that IQ has an estimated measurement error of 2.12. How would you include that? 
